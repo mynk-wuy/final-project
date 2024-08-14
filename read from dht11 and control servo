@@ -1,0 +1,67 @@
+#include <ESP8266WiFi.h>
+#include <DHT.h>
+#include <Servo.h>
+
+
+char ssid[] = "Home_202";
+char pass[] = "1234567890";
+
+Servo myServo;
+#define led 4
+
+#define DHTTYPE DHT22
+#define dht_dpin 2
+DHT dht(dht_dpin, DHTTYPE); 
+
+void setup() 
+{
+  Serial.begin(115200);
+  //Cài đặt Wifi
+  WiFi.begin(ssid, pass);
+  while (WiFi.waitForConnectResult() != WL_CONNECTED)
+  {
+    Serial.print("Status: Failed\n");
+    WiFi.disconnect(false);
+    delay(1000);
+    WiFi.begin(ssid, pass);
+  }
+  Serial.print("\nIP address: ");
+  Serial.println(WiFi.localIP());
+  pinMode(led,OUTPUT);
+
+  //Cài đặt DHT
+  dht.begin();
+
+  //Cài đặt servo
+  myServo.attach(0);
+  myServo.write(0);
+}
+
+void loop() 
+{
+  Serial.print("\nIP address: ");
+  Serial.println(WiFi.localIP());
+
+  //Chuyển đổi kiểu dữ liệu sang chuỗi kí tự
+  //String nhietdo = String(dht.readTemperature());  //Nhiệt độ
+  //String doam = String(dht.readHumidity());     //Độ ẩm
+  float h = dht.readHumidity();    
+  float t = dht.readTemperature(); 
+  
+  Serial.print("\nDo am = ");
+  Serial.print(h);
+  Serial.print("%  ");
+  if(h >= 70)
+    {
+      myServo.write(180); 
+      digitalWrite(led,HIGH);
+      Serial.print("\nDo am vuot qua!!!");
+    }
+    else
+    {
+      myServo.write(0);
+      digitalWrite(led,LOW);
+      Serial.print("\nDo am binh thuong.");
+    }
+  delay(3000);
+}
