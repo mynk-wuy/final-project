@@ -3,6 +3,8 @@
 #include <PubSubClient.h>
 #include <DHT.h>
 #include <ESP32Servo.h>
+#include <Wire.h>
+#include <BH1750.h>
 
 // Thông tin mạng và token ThingsBoard
 const char* ssid = "2107";
@@ -14,12 +16,20 @@ const char* accessToken = "gBCwrjsULdwRMsWmU2F8";
 #define DHTPIN 23
 #define DHTTYPE DHT11
 
+#define LIGHT_THRESHOLD 30
+BH1750 lightMeter;
+
 #define LED_PIN 2        // Chân kết nối LED
 #define BUTTON_LED_PIN 22     // Chân kết nối nút nhấn  
 
 #define WATER_PUMP 2UL
-#define SERVO_MOTOR 5UL
+//#define SERVO_MOTOR 5UL
 #define BTN_WATER_PUMP 16
+
+#define RAIN_PIN 32
+#define A0_PIN 34
+#define PIN_SG90 13
+Servo MyServo;
 
 bool ledState = false;   // Biến theo dõi trạng thái LED
 bool lastButtonState = HIGH; // Trạng thái ban đầu của nút nhấn
@@ -27,8 +37,6 @@ bool lastButtonState = HIGH; // Trạng thái ban đầu của nút nhấn
 bool waterpump_state = false;
 bool last_btn_waterpump_state = HIGH;
 bool auto_mode=false;
-
-Servo myservo;
 
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
@@ -44,10 +52,10 @@ void auto_mode_main_task() {
     }
 
     if (temperature >= 40) {
-        myservo.write(180);
+        MyServo.write(180);
         send_servo_motor_state(true);
     } else {
-        myservo.write(0);
+        MyServo.write(0);
         send_servo_motor_state(false);
     }
 }
@@ -85,11 +93,11 @@ void rpcCallback(char* topic, byte* payload, unsigned int length) {
 
     if (incomingMessage.indexOf("\"method\":\"setServostate\"") != -1) {
         if (incomingMessage.indexOf("\"params\":true") != -1) {
-            myservo.write(180);
+            MyServo.write(180);
             Serial.println("Motor bật!");
             send_servo_motor_state(true);
         } else if (incomingMessage.indexOf("\"params\":false") != -1) {
-            myservo.write(0);
+            MyServo.write(0);
             Serial.println("Motor tắt!");
             send_servo_motor_state(false);
         }
@@ -169,6 +177,9 @@ void setup() {
     Serial.begin(115200);
     dht.begin();
     
+    Wire.begin();             
+    lightMeter.begin();
+
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
     pinMode(BUTTON_LED_PIN, INPUT_PULLUP);
@@ -178,14 +189,14 @@ void setup() {
     digitalWrite(WATER_PUMP, LOW);
     pinMode(BTN_WATER_PUMP, INPUT_PULLUP);
 
-    myservo.attach(SERVO_MOTOR);
-    myservo.write(0); // Khởi tạo servo ở vị trí 0 độ
+    pinMode(RAIN_PIN, OUTPUT);
+    MyServo.setPeriodHertz(50);
+    MyServo.attach(PIN_SG90,500,2400);
+    MyServo.write(0); // Khởi tạo servo ở vị trí 0 độ
 
     setup_wifi();
-
     client.setServer(thingsboardServer, 1883);
     client.setCallback(rpcCallback);
-
     reconnect();
 
     client.subscribe("v1/devices/me/rpc/request/+");
@@ -197,6 +208,16 @@ void loop() {
         reconnect();
         }
         syncLedState();
+
+    float humidity = dht.readHumidity();
+    float temperature = dht.readTemperature();
+    float lux = lightMeter.readLightLevel();
+
+    digitalWrite(RAIN_PIN, HIGH);
+    delay(10);
+    int rain_value = analogRead(A0_PIN);
+    digitalWrite(RAIN_PIN, LOW);
+    Serial.println(rain_value);    
 
     bool buttonState = digitalRead(BUTTON_LED_PIN);
     // Bật/tắt LED khi nút nhấn được bấm
@@ -214,11 +235,18 @@ void loop() {
         digitalWrite(WATER_PUMP, waterpump_state ? HIGH : LOW);
         send_water_pump_state(waterpump_state);
         delay(50);
-    }
+    } else if (lux < LIGHT_THRESHOLD && !ledState) {
+        ledState = true;
+        digitalWrite(LED_PIN, HIGH);
+        syncLedState();
+    } else if (lux >= LIGHT_THRESHOLD && ledState) {
+        ledState = false;
+        digitalWrite(LED_PIN, LOW);
+        syncLedState();
     last_btn_waterpump_state = btn_waterpump_state;
     
-    humidity = dht.readHumidity();
-    temperature = dht.readTemperature();
+    Serial.print("Ánh sáng (lux): ");
+    Serial.println(lux);
 
     if (isnan(humidity) || isnan(temperature)) {
         Serial.println("Lỗi đọc từ cảm biến DHT!");
@@ -228,11 +256,18 @@ void loop() {
     String payload = "{";
     payload += "\"temperature\":"; payload += temperature; payload += ",";
     payload += "\"humidity\":"; payload += humidity;
+    payload += "\"rain_value\":"; payload += rain_value;
     payload += "}";
 
     Serial.print("Gửi payload: ");
     Serial.println(payload);
     client.publish("v1/devices/me/telemetry", (char*) payload.c_str());
+
+    if (rain_value <= 3500) {
+    MyServo.write(180); // Rotate the servo to 180 degrees (closed position)
+    } else if (rain_value >= 4000) {
+    MyServo.write(0);   // Rotate the servo to 0 degrees (open position)
+    }
     
     if(auto_mode==true)
     {
