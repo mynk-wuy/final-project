@@ -9,21 +9,26 @@ const char* ssid = "2107";
 const char* password = "88888888";
 const char* thingsboardServer = "demo.thingsboard.io";
 const char* accessToken = "gBCwrjsULdwRMsWmU2F8";
+// const char* clientID = "ESP32_Client";
 
 #define DHTPIN 23
 #define DHTTYPE DHT11
 
+#define LED_PIN 2        // Chân kết nối LED
+#define BUTTON_LED_PIN 22     // Chân kết nối nút nhấn  
+
 #define WATER_PUMP 2UL
 #define SERVO_MOTOR 5UL
 #define BTN_WATER_PUMP 16
+
+bool ledState = false;   // Biến theo dõi trạng thái LED
+bool lastButtonState = HIGH; // Trạng thái ban đầu của nút nhấn
 
 bool waterpump_state = false;
 bool last_btn_waterpump_state = HIGH;
 bool auto_mode=false;
 
 Servo myservo;
-float humidity = 0;
-float temperature = 0;
 
 DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
@@ -111,6 +116,19 @@ void rpcCallback(char* topic, byte* payload, unsigned int length) {
 
         }
     }
+
+    if (incomingMessage.indexOf("\"method\":\"setLEDState\"") != -1) {
+        if (incomingMessage.indexOf("\"params\":true") != -1) {
+            ledState = true;
+            digitalWrite(LED_PIN, HIGH);
+            Serial.println("LED turned ON by ThingsBoard");
+        } else if (incomingMessage.indexOf("\"params\":false") != -1) {
+          ledState = false;
+          digitalWrite(LED_PIN, LOW);
+          Serial.println("LED turned OFF by ThingsBoard");
+        }
+        syncLedState(); // Đồng bộ hóa trạng thái LED sau khi nhận lệnh từ ThingsBoard
+    }
 }
 
 void setup_wifi() {
@@ -151,6 +169,11 @@ void setup() {
     Serial.begin(115200);
     dht.begin();
     
+    pinMode(LED_PIN, OUTPUT);
+    digitalWrite(LED_PIN, LOW);
+    pinMode(BUTTON_LED_PIN, INPUT_PULLUP);
+    // Đặt chân nút nhấn là đầu vào với điện trở kéo lên bên trong
+    
     pinMode(WATER_PUMP, OUTPUT);
     digitalWrite(WATER_PUMP, LOW);
     pinMode(BTN_WATER_PUMP, INPUT_PULLUP);
@@ -162,15 +185,29 @@ void setup() {
 
     client.setServer(thingsboardServer, 1883);
     client.setCallback(rpcCallback);
+
+    reconnect();
+
     client.subscribe("v1/devices/me/rpc/request/+");
+    syncLedState(); // Đồng bộ hóa trạng thái LED khi kết nối
 }
 
 void loop() {
     if (!client.connected()) {
         reconnect();
+        }
+        syncLedState();
+
+    bool buttonState = digitalRead(BUTTON_LED_PIN);
+    // Bật/tắt LED khi nút nhấn được bấm
+    if (buttonState == LOW && lastButtonState == HIGH) { // Nút nhấn được bấm
+        ledState = !ledState;
+        digitalWrite(LED_PIN, ledState ? HIGH : LOW);
+        syncLedState(); // Đồng bộ hóa trạng thái với ThingsBoard
+        delay(50); // Trễ để chống rung
     }
-    client.loop();
-    
+    lastButtonState = buttonState;
+
     bool btn_waterpump_state = digitalRead(BTN_WATER_PUMP);
     if (btn_waterpump_state == LOW && last_btn_waterpump_state == HIGH) {
         waterpump_state = !waterpump_state;
@@ -180,7 +217,7 @@ void loop() {
     }
     last_btn_waterpump_state = btn_waterpump_state;
     
-    humidity = dht.readHumidity();;
+    humidity = dht.readHumidity();
     temperature = dht.readTemperature();
 
     if (isnan(humidity) || isnan(temperature)) {
@@ -202,5 +239,18 @@ void loop() {
       auto_mode_main_task();
     }
 
+    client.loop();
+
     delay(2000); // Chờ 2 giây trước khi đọc lại
+}
+
+void syncLedState() {
+  // Tạo chuỗi JSON để gửi trạng thái LED
+  String payload = String("{\"LEDState\":") + (ledState ? "true" : "false") + "}";
+
+  // Gửi trạng thái đến ThingsBoard
+  client.publish("v1/devices/me/attributes", payload.c_str());
+
+  Serial.print("Trạng thái LED đã được đồng bộ hóa: ");
+  Serial.println(payload);
 }
