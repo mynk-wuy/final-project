@@ -7,10 +7,10 @@
 #include <BH1750.h>
 
 // Thông tin mạng và token ThingsBoard
-const char* ssid = "2107";
-const char* password = "88888888";
+const char* ssid = "INED-UTC";
+const char* password = "ined@123456";
 const char* thingsboardServer = "demo.thingsboard.io";
-const char* accessToken = "gBCwrjsULdwRMsWmU2F8";
+const char* accessToken = "kDJIqnAdFgu1lalVxUVG";
 // const char* clientID = "ESP32_Client";
 
 #define DHTPIN 23
@@ -19,7 +19,7 @@ const char* accessToken = "gBCwrjsULdwRMsWmU2F8";
 #define LIGHT_THRESHOLD 30
 BH1750 lightMeter;
 
-#define LED_PIN 2        // Chân kết nối LED
+#define LED_PIN 25        // Chân kết nối LED
 #define BUTTON_LED_PIN 22     // Chân kết nối nút nhấn  
 
 #define WATER_PUMP 2UL
@@ -28,7 +28,7 @@ BH1750 lightMeter;
 
 #define RAIN_PIN 32
 #define A0_PIN 34
-#define PIN_SG90 13
+#define PIN_SG90 18
 Servo MyServo;
 
 bool ledState = false;   // Biến theo dõi trạng thái LED
@@ -42,22 +42,15 @@ DHT dht(DHTPIN, DHTTYPE);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-void auto_mode_main_task() {
-    if (humidity <= 50) {
-        digitalWrite(WATER_PUMP, HIGH);
-        send_water_pump_state(true);
-    } else {
-        digitalWrite(WATER_PUMP, LOW);
-        send_water_pump_state(false);
-    }
+void syncLedState() {
+  // Tạo chuỗi JSON để gửi trạng thái LED
+  String payload = String("{\"LEDState\":") + (ledState ? "true" : "false") + "}";
 
-    if (temperature >= 40) {
-        MyServo.write(180);
-        send_servo_motor_state(true);
-    } else {
-        MyServo.write(0);
-        send_servo_motor_state(false);
-    }
+  // Gửi trạng thái đến ThingsBoard
+  client.publish("v1/devices/me/attributes", payload.c_str());
+
+  Serial.print("Trạng thái LED đã được đồng bộ hóa: ");
+  Serial.println(payload);
 }
 
 void send_water_pump_state(bool state) {
@@ -80,6 +73,17 @@ void mode_state(bool state) {
     Serial.println(payload);
     client.publish("v1/devices/me/attributes", payload.c_str());
 }
+
+void auto_mode_main_task(float humidity , float temperature) {
+    if (humidity <= 50) {
+        digitalWrite(WATER_PUMP, HIGH);
+        send_water_pump_state(true);
+    } else {
+        digitalWrite(WATER_PUMP, LOW);
+        send_water_pump_state(false);
+    }
+}
+
 void rpcCallback(char* topic, byte* payload, unsigned int length) {
     Serial.print("Message arrived [");
     Serial.print(topic);
@@ -206,9 +210,8 @@ void setup() {
 void loop() {
     if (!client.connected()) {
         reconnect();
-        }
-        syncLedState();
-
+    }
+    
     float humidity = dht.readHumidity();
     float temperature = dht.readTemperature();
     float lux = lightMeter.readLightLevel();
@@ -217,7 +220,7 @@ void loop() {
     delay(10);
     int rain_value = analogRead(A0_PIN);
     digitalWrite(RAIN_PIN, LOW);
-    Serial.println(rain_value);    
+        
 
     bool buttonState = digitalRead(BUTTON_LED_PIN);
     // Bật/tắt LED khi nút nhấn được bấm
@@ -235,15 +238,18 @@ void loop() {
         digitalWrite(WATER_PUMP, waterpump_state ? HIGH : LOW);
         send_water_pump_state(waterpump_state);
         delay(50);
-    } else if (lux < LIGHT_THRESHOLD && !ledState) {
+    }
+    last_btn_waterpump_state = btn_waterpump_state;
+
+    if (lux < LIGHT_THRESHOLD) {
         ledState = true;
         digitalWrite(LED_PIN, HIGH);
         syncLedState();
-    } else if (lux >= LIGHT_THRESHOLD && ledState) {
+    }else {
         ledState = false;
         digitalWrite(LED_PIN, LOW);
         syncLedState();
-    last_btn_waterpump_state = btn_waterpump_state;
+    }
     
     Serial.print("Ánh sáng (lux): ");
     Serial.println(lux);
@@ -252,11 +258,20 @@ void loop() {
         Serial.println("Lỗi đọc từ cảm biến DHT!");
         return;
     }
+    Serial.print(" - Giá trị cảm biến mưa: ");
+    Serial.println(rain_value);
+    Serial.print(" - Độ ẩm (%): ");
+    Serial.println(humidity);
+    Serial.print(" - Nhiệt độ (°C): ");
+    Serial.println(temperature);
+    Serial.print(" - Trạng thái LED: ");
+    Serial.println(ledState ? "ON" : "OFF");
 
     String payload = "{";
     payload += "\"temperature\":"; payload += temperature; payload += ",";
     payload += "\"humidity\":"; payload += humidity;
     payload += "\"rain_value\":"; payload += rain_value;
+    payload += "\"lux_value\":"; payload += lux;
     payload += "}";
 
     Serial.print("Gửi payload: ");
@@ -265,27 +280,18 @@ void loop() {
 
     if (rain_value <= 3500) {
     MyServo.write(180); // Rotate the servo to 180 degrees (closed position)
+    send_servo_motor_state(true);
+
     } else if (rain_value >= 4000) {
     MyServo.write(0);   // Rotate the servo to 0 degrees (open position)
+    send_servo_motor_state(true);
     }
     
     if(auto_mode==true)
     {
-      auto_mode_main_task();
+      auto_mode_main_task(humidity,temperature);
     }
 
     client.loop();
-
     delay(2000); // Chờ 2 giây trước khi đọc lại
-}
-
-void syncLedState() {
-  // Tạo chuỗi JSON để gửi trạng thái LED
-  String payload = String("{\"LEDState\":") + (ledState ? "true" : "false") + "}";
-
-  // Gửi trạng thái đến ThingsBoard
-  client.publish("v1/devices/me/attributes", payload.c_str());
-
-  Serial.print("Trạng thái LED đã được đồng bộ hóa: ");
-  Serial.println(payload);
 }
