@@ -16,6 +16,9 @@ const char* accessToken = "kDJIqnAdFgu1lalVxUVG";
 #define DHTPIN 23
 #define DHTTYPE DHT11
 
+#define IRsensor 14
+#define Bell 4
+
 #define LIGHT_THRESHOLD 30
 BH1750 lightMeter;
 
@@ -51,6 +54,13 @@ void syncLedState() {
 
   Serial.print("Trạng thái LED đã được đồng bộ hóa: ");
   Serial.println(payload);
+}
+
+void send_bell_state(bool state) {
+    String payload = String("{\"BellState\":") + (state ? "true" : "false") + "}";
+    Serial.print("Gửi trạng thái của chuông: ");
+    Serial.println(payload);
+    client.publish("v1/devices/me/attributes", payload.c_str());
 }
 
 void send_water_pump_state(bool state) {
@@ -193,6 +203,10 @@ void setup() {
     digitalWrite(WATER_PUMP, LOW);
     pinMode(BTN_WATER_PUMP, INPUT_PULLUP);
 
+    pinMode(Bell,OUTPUT);
+    pinMode(IRsensor,INPUT);
+    pinMode(Bell,LOW);
+
     pinMode(RAIN_PIN, OUTPUT);
     MyServo.setPeriodHertz(50);
     MyServo.attach(PIN_SG90,500,2400);
@@ -215,6 +229,7 @@ void loop() {
     float humidity = dht.readHumidity();
     float temperature = dht.readTemperature();
     float lux = lightMeter.readLightLevel();
+    int IRsensor_value = digitalRead(IRsensor);
 
     digitalWrite(RAIN_PIN, HIGH);
     delay(10);
@@ -250,6 +265,24 @@ void loop() {
         digitalWrite(LED_PIN, LOW);
         syncLedState();
     }
+
+    bool Bell_Status = false;
+    if (IRsensor_value == 1){
+    Bell_Status = false;
+    digitalWrite(Bell,LOW);
+    Serial.println();
+    Serial.println("Không có vật cản.");
+    send_bell_state(Bell_Status);
+    delay(50);
+    }
+    else{
+    Bell_Status = true;
+    digitalWrite(Bell,HIGH);
+    Serial.println();
+    Serial.println("Có vật cản!!!");
+    send_bell_state(Bell_Status);
+    delay(50);
+    }
     
     Serial.print("Ánh sáng (lux): ");
     Serial.println(lux);
@@ -269,9 +302,9 @@ void loop() {
 
     String payload = "{";
     payload += "\"temperature\":"; payload += temperature; payload += ",";
-    payload += "\"humidity\":"; payload += humidity;
-    payload += "\"rain_value\":"; payload += rain_value;
-    payload += "\"lux_value\":"; payload += lux;
+    payload += "\"humidity\":"; payload += humidity ; payload += ","
+    payload += "\"rain_value\":"; payload += rain_value ; payload += ","
+    payload += "\"lux_value\":"; payload += lux ; payload += ","
     payload += "}";
 
     Serial.print("Gửi payload: ");
