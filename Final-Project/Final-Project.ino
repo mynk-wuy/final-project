@@ -25,9 +25,10 @@ BH1750 lightMeter;
 #define LED_PIN 25        // Chân kết nối LED
 #define BUTTON_LED_PIN 22     // Chân kết nối nút nhấn  
 
-#define WATER_PUMP 2UL
-//#define SERVO_MOTOR 5UL
+//#define WATER_PUMP 2UL
+#define SERVO_MOTOR 5
 #define BTN_WATER_PUMP 16
+#define Relay_PIN 26
 
 #define RAIN_PIN 32
 #define A0_PIN 34
@@ -37,7 +38,7 @@ Servo MyServo;
 bool ledState = false;   // Biến theo dõi trạng thái LED
 bool lastButtonState = HIGH; // Trạng thái ban đầu của nút nhấn
 
-bool waterpump_state = false;
+bool relay_state = false;
 bool last_btn_waterpump_state = HIGH;
 bool auto_mode=false;
 
@@ -86,10 +87,10 @@ void mode_state(bool state) {
 
 void auto_mode_main_task(float humidity , float temperature) {
     if (humidity <= 50) {
-        digitalWrite(WATER_PUMP, HIGH);
+        digitalWrite(Relay_PIN, HIGH);
         send_water_pump_state(true);
     } else {
-        digitalWrite(WATER_PUMP, LOW);
+        digitalWrite(Relay_PIN, LOW);
         send_water_pump_state(false);
     }
 }
@@ -119,11 +120,11 @@ void rpcCallback(char* topic, byte* payload, unsigned int length) {
 
     if (incomingMessage.indexOf("\"method\":\"setWaterstate\"") != -1) {
         if (incomingMessage.indexOf("\"params\":true") != -1) {
-            digitalWrite(WATER_PUMP, HIGH);
+            digitalWrite(Relay_PIN, HIGH);
             Serial.println("WaterPump bật!");
             send_water_pump_state(true);
         } else if (incomingMessage.indexOf("\"params\":false") != -1) {
-            digitalWrite(WATER_PUMP, LOW);
+            digitalWrite(Relay_PIN, LOW);
             Serial.println("WaterPump tắt!");
             send_water_pump_state(false);
         }
@@ -199,8 +200,8 @@ void setup() {
     pinMode(BUTTON_LED_PIN, INPUT_PULLUP);
     // Đặt chân nút nhấn là đầu vào với điện trở kéo lên bên trong
     
-    pinMode(WATER_PUMP, OUTPUT);
-    digitalWrite(WATER_PUMP, LOW);
+    pinMode(Relay_PIN, OUTPUT);
+    digitalWrite(Relay_PIN, LOW);
     pinMode(BTN_WATER_PUMP, INPUT_PULLUP);
 
     pinMode(Bell,OUTPUT);
@@ -249,9 +250,9 @@ void loop() {
 
     bool btn_waterpump_state = digitalRead(BTN_WATER_PUMP);
     if (btn_waterpump_state == LOW && last_btn_waterpump_state == HIGH) {
-        waterpump_state = !waterpump_state;
-        digitalWrite(WATER_PUMP, waterpump_state ? HIGH : LOW);
-        send_water_pump_state(waterpump_state);
+        relay_state = !relay_state;
+        digitalWrite(Relay_PIN, relay_state ? HIGH : LOW);
+        send_water_pump_state(relay_state);
         delay(50);
     }
     last_btn_waterpump_state = btn_waterpump_state;
