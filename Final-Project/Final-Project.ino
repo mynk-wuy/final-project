@@ -304,9 +304,9 @@ void loop() {
 
     String payload = "{";
     payload += "\"temperature\":"; payload += temperature; payload += ",";
-    payload += "\"humidity\":"; payload += humidity ; payload += ","
-    payload += "\"rain_value\":"; payload += rain_value ; payload += ","
-    payload += "\"lux_value\":"; payload += lux ; payload += ","
+    payload += "\"humidity\":"; payload += humidity ; payload += ",";
+    payload += "\"rain_value\":"; payload += rain_value ; payload += ",";
+    payload += "\"lux_value\":"; payload += lux ; payload += ",";
     payload += "}";
 
     Serial.print("Gửi payload: ");
