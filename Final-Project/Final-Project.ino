@@ -40,6 +40,7 @@ bool lastButtonState = HIGH; // Trạng thái ban đầu của nút nhấn
 
 bool relay_state = false;
 bool last_btn_waterpump_state = HIGH;
+
 bool auto_mode=false;
 
 DHT dht(DHTPIN, DHTTYPE);
@@ -201,7 +202,7 @@ void setup() {
     // Đặt chân nút nhấn là đầu vào với điện trở kéo lên bên trong
     
     pinMode(Relay_PIN, OUTPUT);
-    digitalWrite(Relay_PIN, LOW);
+    digitalWrite(Relay_PIN, relay_state);
     pinMode(BTN_WATER_PUMP, INPUT_PULLUP);
 
     pinMode(Bell,OUTPUT);
